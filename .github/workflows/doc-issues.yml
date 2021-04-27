@@ -40,8 +40,8 @@ jobs:
         id: create-issue
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          owner: yzdocs 
-          repo: cockroach 
+          owner: cockroachdb 
+          repo: docs
           title: ${{ env.PR_TITLE }}
           body: |
             PR: https://github.com/cockroachdb/cockroach/pull/${{ env.PR_NUMBER }}
