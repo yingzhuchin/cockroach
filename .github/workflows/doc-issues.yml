@@ -17,6 +17,20 @@ jobs:
     name: Extract release notes 
     runs-on: ubuntu-latest
     if: ${{ github.event.pull_request.merged == true }}
+    env:
+      PR_BODY: ${{ github.event.pull_request.body }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REGEX: '[rR]elease [nN]otes? ?(\((\w.+)\):|:) (\w+.*)$'
     steps:
-      - run: |
-          echo "I am merged."
+      - uses: actions-ecosystem/action-regex-match@v2
+        id: regex-match
+        with:
+          text: ${{ env.PR_BODY }}
+          regex: ${{ env.REGEX }}
+          flags: 'gm'
+
+      - name: echo regex
+        run: 'echo "regex-match output: ${{ env.REGEX_OUT }}"'
+        env:
+          REGEX_OUT: ${{ steps.regex-match.outputs.match }}
