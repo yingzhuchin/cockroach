@@ -10,13 +10,13 @@ on:
       - master
       - 'release-*'
 
-    types: [closed]
+#    types: [closed]
 
 jobs:
   create-doc-issue:
     name: Extract release notes 
     runs-on: ubuntu-latest
-    if: ${{ github.event.pull_request.merged == true }}
+#    if: ${{ github.event.pull_request.merged == true }}
     env:
       PR_BODY: ${{ github.event.pull_request.body }}
       PR_TITLE: ${{ github.event.pull_request.title }}
@@ -41,7 +41,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           owner: yzdocs 
-          repo: docs
+          repo: cockroach 
           title: ${{ env.PR_TITLE }}
           body: |
             PR: https://github.com/cockroachdb/cockroach/pull/${{ env.PR_NUMBER }}
