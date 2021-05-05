@@ -1,0 +1,53 @@
+name: Create doc issues on PR merge
+
+# Action that creates issues in cockroachdb/docs when a PR is merged from
+# cockroachdb/cockroach in the master or release-* branch and has a
+# release note in the PR body.
+
+on:
+  pull_request:
+    branches:
+      - master
+      - 'release-*'
+
+#    types: [closed]
+
+jobs:
+  create-doc-issue:
+    runs-on: ubuntu-latest
+#    if: ${{ github.event.pull_request.merged == true }}
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REGEX: '[rR]elease [nN]otes? ?(\((\w.+)\):|:) (\w+.*)$'
+    steps:
+      - name: Get PR commits
+        id: 'get-pr-commits'
+        uses: tim-actions/get-pr-commits@master
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse PR commits 
+        id: file
+        uses: stefanprodan/kube-tools@v1
+        with:
+          command: |
+            echo '${{steps.get-pr-commits.outputs.commits}}' > commits.txt 
+            echo $(jq -r '.[].commit.message')
+            LEN=$( jq length commits.txt )
+            ctr=0
+            while [ $ctr -lt $LEN ]
+            do
+              jq -r --arg i "$ctr" '.[$i|tonumber].commit.message' commits.txt > message
+              cat message | sed -n '/[rR]elease [nN]ote/,$p' > temp
+              sed -r 's/[rR]elease [nN]otes? ?\(.*: ?/''/g' temp >> messages.txt
+              ctr=`expr $ctr + 1`
+            done
+            body=$(cat messages.txt)
+            body="${body//'%'/'%25'}"
+            body="${body//$'\n'/'%0A'}"
+            body="${body//$'\r'/'%0D'}"
+            echo ::set-output name=body::$body
+
+      - name: Print what we have
+        run: echo '${{ steps.file.outputs.body }}' 
