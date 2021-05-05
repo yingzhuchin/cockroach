@@ -29,12 +29,6 @@ jobs:
           regex: ${{ env.REGEX }}
           flags: 'gm'
 
-      - name: Get PR commits
-        id: 'get-pr-commits'
-        uses: tim-actions/get-pr-commits@master
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Format any release note from PR body
         id: body
         run: |
@@ -46,27 +40,6 @@ jobs:
           body="${body//$'\n'/'%0A'}"
           body="${body//$'\r'/'%0D'}"
           echo ::set-output name=body::$body
-
-      - name: Format any release note from PR commits
-        id: commits
-        uses: stefanprodan/kube-tools@v1
-        with:
-          command: |
-            echo '${{steps.get-pr-commits.outputs.commits}}' > commits.txt 
-            LEN=$( jq length commits.txt )
-            ctr=0
-            while [ $ctr -lt $LEN ]
-            do
-              jq --arg i "$ctr" '.[$i|tonumber].commit.message' commits.txt > message
-              cat message | sed -n '/[rR]elease [nN]ote/,$p' > temp
-              sed -r 's/[rR]elease [nN]otes? ?\(.*: ?/''/g' temp >> messages.txt
-              ctr=`expr $ctr + 1`
-            done
-            commits=$(cat messages.txt)
-            commits="${commits//'%'/'%25'}"
-            commits="${commits//$'\n'/'%0A'}"
-            commits="${commits//$'\r'/'%0D'}"
-            echo ::set-output name=commits::$commits
 
       - name: Create docs issue
         if: |
@@ -89,4 +62,3 @@ jobs:
 
             From release notes:
             > ${{ steps.body.outputs.body }}
-            > ${{ steps.commits.outputs.commits}}
