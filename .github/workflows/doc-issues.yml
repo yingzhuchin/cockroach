@@ -14,6 +14,7 @@ on:
 
 jobs:
   create-doc-issue:
+    name: Extract release notes 
     runs-on: ubuntu-latest
     if: ${{ github.event.pull_request.merged == true }}
     env:
