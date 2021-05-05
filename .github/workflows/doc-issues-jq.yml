@@ -34,19 +34,7 @@ jobs:
           command: |
             echo '${{steps.get-pr-commits.outputs.commits}}' > commits.txt 
             echo $(jq -r '.[].commit.message')
-            LEN=$( jq length commits.txt )
-            ctr=0
-            while [ $ctr -lt $LEN ]
-            do
-              jq -r --arg i "$ctr" '.[$i|tonumber].commit.message' commits.txt > message
-              cat message | sed -n '/[rR]elease [nN]ote/,$p' > temp
-              sed -r 's/[rR]elease [nN]otes? ?\(.*: ?/''/g' temp >> messages.txt
-              ctr=`expr $ctr + 1`
-            done
-            body=$(cat messages.txt)
-            body="${body//'%'/'%25'}"
-            body="${body//$'\n'/'%0A'}"
-            body="${body//$'\r'/'%0D'}"
+            jq -r '.[].commit.message' > body
             echo ::set-output name=body::$body
 
       - name: Print what we have
