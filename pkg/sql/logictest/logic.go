@@ -1356,8 +1356,7 @@ func (t *logicTest) newCluster(serverArgs TestServerArgs) {
 	}
 
 	distSQLKnobs := &execinfra.TestingKnobs{
-		MetadataTestLevel:                    execinfra.Off,
-		CheckVectorizedFlowIsClosedCorrectly: true,
+		MetadataTestLevel: execinfra.Off,
 	}
 	cfg := t.cfg
 	if cfg.sqlExecUseDisk {
@@ -1459,7 +1458,7 @@ func (t *logicTest) newCluster(serverArgs TestServerArgs) {
 		// Prevent a logging assertion that the server ID is initialized multiple times.
 		log.TestingClearServerIdentifiers()
 
-		tenant, err := t.cluster.Server(t.nodeIdx).StartTenant(tenantArgs)
+		tenant, err := t.cluster.Server(t.nodeIdx).StartTenant(context.Background(), tenantArgs)
 		if err != nil {
 			t.rootT.Fatalf("%+v", err)
 		}

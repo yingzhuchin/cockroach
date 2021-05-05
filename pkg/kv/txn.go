@@ -684,29 +684,29 @@ func (txn *Txn) CommitOrCleanup(ctx context.Context) error {
 	return err
 }
 
-// UpdateDeadlineMaybe sets the transactions deadline to the lower of the
-// current one (if any) and the passed value.
-//
-// The deadline cannot be lower than txn.ReadTimestamp.
-func (txn *Txn) UpdateDeadlineMaybe(ctx context.Context, deadline hlc.Timestamp) bool {
+// UpdateDeadline sets the transactions deadline to the passed deadline.
+// It may move the deadline to any timestamp above the current read timestamp.
+// If the deadline is below the current provisional commit timestamp (write timestamp),
+// then the transaction will fail with a deadline error during the commit.
+// The deadline cannot be lower than txn.ReadTimestamp and we make the assumption
+// the read timestamp will not change during execution, which is valid today.
+func (txn *Txn) UpdateDeadline(ctx context.Context, deadline hlc.Timestamp) error {
 	if txn.typ != RootTxn {
-		panic(errors.WithContextTags(errors.AssertionFailedf("UpdateDeadlineMaybe() called on leaf txn"), ctx))
+		panic(errors.WithContextTags(errors.AssertionFailedf("UpdateDeadline() called on leaf txn"), ctx))
 	}
 
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
-	if txn.mu.deadline == nil || deadline.Less(*txn.mu.deadline) {
-		readTimestamp := txn.readTimestampLocked()
-		if deadline.Less(txn.readTimestampLocked()) {
-			log.Fatalf(ctx, "deadline below read timestamp is nonsensical; "+
-				"txn has would have no change to commit. Deadline: %s. Read timestamp: %s.",
-				deadline, readTimestamp)
-		}
-		txn.mu.deadline = new(hlc.Timestamp)
-		*txn.mu.deadline = deadline
-		return true
+
+	readTimestamp := txn.readTimestampLocked()
+	if deadline.Less(readTimestamp) {
+		log.Fatalf(ctx, "deadline below read timestamp is nonsensical; "+
+			"txn has would have no chance to commit. Deadline: %s. Read timestamp: %s Previous Deadline: %s.",
+			deadline, readTimestamp, txn.mu.deadline)
 	}
-	return false
+	txn.mu.deadline = new(hlc.Timestamp)
+	*txn.mu.deadline = deadline
+	return nil
 }
 
 // resetDeadlineLocked resets the deadline.
@@ -1328,7 +1328,7 @@ func (txn *Txn) ManualRefresh(ctx context.Context) error {
 // WARNING: failure to run the returned function could lead to consistency
 // violations where a future, causally dependent transaction may fail to
 // observe the writes performed by this transaction.
-func (txn *Txn) DeferCommitWait(ctx context.Context) func(context.Context) {
+func (txn *Txn) DeferCommitWait(ctx context.Context) func(context.Context) error {
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
 	return txn.mu.sender.DeferCommitWait(ctx)

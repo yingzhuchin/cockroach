@@ -30,19 +30,36 @@ jobs:
           regex: ${{ env.REGEX }}
           flags: 'gm'
 
-      - name: echo regex
-        run: 'echo "regex-match output: ${{ env.REGEX_OUT }}"'
-        env:
-          REGEX_OUT: ${{ steps.regex-match.outputs.match }}
+      - name: Format any release note from PR body
+        id: body
+        run: |
+          echo '${{ env.PR_BODY }}' > body.txt
+          cat body.txt | sed -n '/[rR]elease [nN]ote/,$p' > temp
+          sed -r 's/[rR]elease [nN]otes? ?\(.*: ?/''/g' temp > note
+          body=$(cat note)
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}"
+          echo ::set-output name=body::$body
 
-      - uses: maxkomarychev/oction-create-issue@v0.7.1
-        if: ${{ startsWith(steps.regex-match.outputs.group3,'None') != true && steps.regex-match.outputs.match != '' }}
+      - name: Create docs issue
+        if: |
+          steps.regex-match.outputs.match != '' &&
+          startsWith(steps.regex-match.outputs.group3, 'None') == false &&
+          startsWith(steps.regex-match.outputs.group3, 'none') == false &&
+          startsWith(steps.regex-match.outputs.group2, 'Bug') == false &&
+          startsWith(steps.regex-match.outputs.group2, 'bug') == false &&
+          startsWith(steps.regex-match.outputs.group2, 'Performance') == false &&
+          startsWith(steps.regex-match.outputs.group2, 'performance') == false
+        uses: maxkomarychev/oction-create-issue@v0.7.1
         id: create-issue
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT }}
           owner: yzdocs 
-          repo: docs
+          repo: docs 
           title: ${{ env.PR_TITLE }}
           body: |
             PR: https://github.com/cockroachdb/cockroach/pull/${{ env.PR_NUMBER }}
-            From release notes: ${{ steps.regex-match.outputs.group3 }}
+
+            From release notes:
+            > ${{ steps.body.outputs.body }}

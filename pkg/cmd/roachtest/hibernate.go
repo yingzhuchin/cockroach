@@ -34,7 +34,7 @@ var (
 		testDir:  "hibernate-core",
 		buildCmd: `cd /mnt/data1/hibernate/hibernate-core/ && ./../gradlew test -Pdb=cockroachdb ` +
 			`--tests org.hibernate.jdbc.util.BasicFormatterTest.*`,
-		testCmd:     "./gradlew test -Pdb=cockroachdb",
+		testCmd:     "cd /mnt/data1/hibernate/hibernate-core/ && ./../gradlew test -Pdb=cockroachdb",
 		blocklists:  hibernateBlocklists,
 		dbSetupFunc: nil,
 	}
@@ -154,6 +154,17 @@ func registerHibernate(r *testRegistry, opt hibernateOptions) {
 			t.Fatal(err)
 		}
 
+		// Delete the test result; the test will be executed again later.
+		if err := repeatRunE(
+			ctx,
+			c,
+			node,
+			"delete test result from build output",
+			fmt.Sprintf(`rm -rf /mnt/data1/hibernate/%s/target/test-results/test`, opt.testDir),
+		); err != nil {
+			t.Fatal(err)
+		}
+
 		blocklistName, expectedFailures, _, _ := opt.blocklists.getLists(version)
 		if expectedFailures == nil {
 			t.Fatalf("No hibernate blocklist defined for cockroach version %s", version)
@@ -216,10 +227,11 @@ func registerHibernate(r *testRegistry, opt hibernateOptions) {
 	}
 
 	r.Add(testSpec{
-		Name:    opt.testName,
-		Owner:   OwnerSQLExperience,
-		Cluster: makeClusterSpec(1),
-		Tags:    []string{`default`, `orm`},
+		Name:       opt.testName,
+		Owner:      OwnerSQLExperience,
+		MinVersion: "v20.2.0",
+		Cluster:    makeClusterSpec(1),
+		Tags:       []string{`default`, `orm`},
 		Run: func(ctx context.Context, t *test, c *cluster) {
 			runHibernate(ctx, t, c)
 		},

@@ -99,7 +99,7 @@ func registerGORM(r *testRegistry) {
 			t.Fatal(err)
 		}
 
-		err = c.RunE(ctx, node, `cockroach sql -e "CREATE DATABASE gorm" --insecure`)
+		err = c.RunE(ctx, node, `./cockroach sql -e "CREATE DATABASE gorm" --insecure`)
 		require.NoError(t, err)
 
 		t.Status("running gorm test suite and collecting results")
@@ -121,7 +121,7 @@ PGUSER=root PGPORT=26257 PGSSLMODE=disable go test -v 2>&1 | %s/bin/go-junit-rep
 	r.Add(testSpec{
 		Name:       "gorm",
 		Owner:      OwnerSQLExperience,
-		MinVersion: "v20.1.0",
+		MinVersion: "v20.2.0",
 		Cluster:    makeClusterSpec(1),
 		Tags:       []string{`default`, `orm`},
 		Run:        runGORM,

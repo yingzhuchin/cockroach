@@ -174,7 +174,7 @@ var charts = []sectionDescription{
 		Charts: []chartDescription{
 			{
 				Title:   "goroutines",
-				Metrics: []string{"sys.goroutines"},
+				Metrics: []string{"sys.goroutines", "sys.runnable.goroutines.per.cpu"},
 			},
 			{
 				Title: "Memory",
@@ -967,6 +967,7 @@ var charts = []sectionDescription{
 					"txn.commits1PC",
 					"txn.parallelcommits",
 					"txn.commit_waits",
+					"txn.commit_waits.before_commit_trigger",
 				},
 			},
 			{

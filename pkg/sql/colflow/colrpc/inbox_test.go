@@ -70,7 +70,7 @@ func TestInboxCancellation(t *testing.T) {
 		err = colexecerror.CatchVectorizedRuntimeError(func() { inbox.Init(ctx) })
 		require.True(t, testutils.IsError(err, "context canceled"), err)
 		// Now, the remote stream arrives.
-		err = inbox.RunWithStream(context.Background(), mockFlowStreamServer{})
+		err = inbox.RunWithStream(context.Background(), mockFlowStreamServer{}, make(<-chan struct{}))
 		// We expect no error from the stream handler since we canceled it
 		// ourselves (a graceful termination).
 		require.Nil(t, err)
@@ -378,7 +378,7 @@ func TestInboxShutdown(t *testing.T) {
 										return
 									}
 									if drainScenario == drainMetaBeforeNext {
-										_ = inbox.DrainMeta(inboxCtx)
+										_ = inbox.DrainMeta()
 										return
 									}
 									if nextSleep != 0 {
@@ -388,12 +388,12 @@ func TestInboxShutdown(t *testing.T) {
 									for !done && err == nil {
 										err = colexecerror.CatchVectorizedRuntimeError(func() { b := inbox.Next(); done = b.Length() == 0 })
 										if drainScenario == drainMetaPrematurely {
-											_ = inbox.DrainMeta(inboxCtx)
+											_ = inbox.DrainMeta()
 											return
 										}
 									}
 									if drainScenario == drainMetaAfterNextIsExhausted {
-										_ = inbox.DrainMeta(inboxCtx)
+										_ = inbox.DrainMeta()
 									}
 									errCh <- err
 								}()

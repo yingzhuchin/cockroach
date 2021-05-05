@@ -16,7 +16,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/opt"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/cat"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/props"
-	"github.com/cockroachdb/cockroach/pkg/sql/opt/props/physical"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
@@ -75,6 +74,13 @@ func (m *Memo) CheckExpr(e opt.Expr) {
 	case *ScanExpr:
 		if t.Flags.NoIndexJoin && t.Flags.ForceIndex {
 			panic(errors.AssertionFailedf("NoIndexJoin and ForceIndex set"))
+		}
+		if evalCtx := m.logPropsBuilder.evalCtx; evalCtx != nil && t.Constraint != nil {
+			if expected := t.Constraint.ExactPrefix(evalCtx); expected != t.ExactPrefix {
+				panic(errors.AssertionFailedf(
+					"expected exact prefix %d but found %d", expected, t.ExactPrefix,
+				))
+			}
 		}
 
 	case *ProjectExpr:
@@ -342,9 +348,9 @@ func (m *Memo) checkMutationExpr(rel RelExpr, private *MutationPrivate) {
 func checkExprOrdering(e opt.Expr) {
 	// Verify that orderings stored in operators only refer to columns produced by
 	// their input.
-	var ordering physical.OrderingChoice
+	var ordering props.OrderingChoice
 	switch t := e.Private().(type) {
-	case *physical.OrderingChoice:
+	case *props.OrderingChoice:
 		ordering = *t
 	case *OrdinalityPrivate:
 		ordering = t.Ordering

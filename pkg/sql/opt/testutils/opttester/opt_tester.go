@@ -12,13 +12,16 @@ package opttester
 
 import (
 	"bytes"
+	"compress/zlib"
 	"context"
 	gosql "database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -41,6 +44,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/norm"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/optbuilder"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/optgen/exprgen"
+	"github.com/cockroachdb/cockroach/pkg/sql/opt/ordering"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/testutils/testcat"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/xform"
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
@@ -306,6 +310,10 @@ func New(catalog cat.Catalog, sql string) *OptTester {
 //
 //    Outputs the lowest cost tree for each step in optimization using the
 //    standard unified diff format. Used for debugging the optimizer.
+//
+//  - optstepsweb [flags]
+//
+//    Similar to optsteps, but outputs a URL which displays the results.
 //
 //  - exploretrace [flags]
 //
@@ -609,6 +617,13 @@ func (ot *OptTester) RunCommand(tb testing.TB, d *datadriven.TestData) string {
 		}
 		return result
 
+	case "optstepsweb":
+		result, err := ot.OptStepsWeb()
+		if err != nil {
+			d.Fatalf(tb, "%+v", err)
+		}
+		return result
+
 	case "exploretrace":
 		result, err := ot.ExploreTrace()
 		if err != nil {
@@ -737,7 +752,7 @@ func fillInLazyProps(e opt.Expr) {
 		norm.DeriveRejectNullCols(rel)
 
 		// Make sure the interesting orderings are calculated.
-		xform.DeriveInterestingOrderings(rel)
+		ordering.DeriveInterestingOrderings(rel)
 	}
 
 	for i, n := 0, e.ChildCount(); i < n; i++ {
@@ -1308,6 +1323,106 @@ func (ot *OptTester) OptSteps() (string, error) {
 	ot.optStepsDisplay(next, "", os)
 
 	return ot.builder.String(), nil
+}
+
+// OptStepsWeb is similar to Optsteps but it uses a special web page for
+// formatting the output. The result will be an URL which contains the encoded
+// data.
+//
+// TODO(radu): currently, we only show normalization steps on this page.
+func (ot *OptTester) OptStepsWeb() (string, error) {
+	ot.builder.Reset()
+
+	// Store all the normalization steps.
+	type step struct {
+		Name string
+		Expr string
+	}
+	var normSteps []step
+	for os := newOptSteps(ot); !os.Done(); {
+		err := os.Next()
+		if err != nil {
+			return "", err
+		}
+		expr := os.fo.o.FormatExpr(os.Root(), ot.Flags.ExprFormat)
+		name := "Initial"
+		if len(normSteps) > 0 {
+			rule := os.LastRuleName()
+			if rule.IsExplore() {
+				// Stop at the first exploration rule.
+				break
+			}
+			name = rule.String()
+		}
+		normSteps = append(normSteps, step{Name: name, Expr: expr})
+	}
+
+	// Produce a diff for each step, as if there was a pair of files for each step
+	// (showing the before and after plans).
+	var normDiff bytes.Buffer
+	for i, s := range normSteps {
+		before := ""
+		if i > 0 {
+			before = normSteps[i-1].Expr
+		}
+		after := s.Expr
+		diff := difflib.UnifiedDiff{
+			A:        difflib.SplitLines(before),
+			FromFile: fmt.Sprintf("a/%s", s.Name),
+			B:        difflib.SplitLines(after),
+			ToFile:   fmt.Sprintf("b/%s", s.Name),
+			Context:  10000,
+		}
+		diffStr, err := difflib.GetUnifiedDiffString(diff)
+		if err != nil {
+			return "", err
+		}
+		diffStr = strings.TrimRight(diffStr, " \r\t\n")
+		normDiff.WriteString(diffStr)
+		normDiff.WriteString("\n")
+	}
+	url, err := ot.encodeOptstepsURL(normDiff.String())
+	if err != nil {
+		return "", err
+	}
+	return url.String(), nil
+}
+
+func (ot *OptTester) encodeOptstepsURL(normDiff string) (url.URL, error) {
+	output := struct {
+		SQL      string
+		Normdiff string
+	}{
+		SQL:      ot.sql,
+		Normdiff: normDiff,
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(output); err != nil {
+		return url.URL{}, err
+	}
+	var compressed bytes.Buffer
+
+	encoder := base64.NewEncoder(base64.URLEncoding, &compressed)
+	compressor := zlib.NewWriter(encoder)
+	if _, err := buf.WriteTo(compressor); err != nil {
+		return url.URL{}, err
+	}
+	if err := compressor.Close(); err != nil {
+		return url.URL{}, err
+	}
+	if err := encoder.Close(); err != nil {
+		return url.URL{}, err
+	}
+	url := url.URL{
+		Scheme: "https",
+		Host:   "raduberinde.github.io",
+		Path:   "optsteps.html",
+		// We could use Fragment (which avoids the data being sent to the server),
+		// but then the link will become invalid when a real fragment link is used.
+		RawQuery: compressed.String(),
+	}
+	return url, nil
 }
 
 func (ot *OptTester) optStepsDisplay(before string, after string, os *optSteps) {

@@ -50,7 +50,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
-	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
@@ -279,7 +278,8 @@ type Replica struct {
 		syncutil.RWMutex
 		// The destroyed status of a replica indicating if it's alive, corrupt,
 		// scheduled for destruction or has been GCed.
-		// destroyStatus should only be set while also holding the raftMu.
+		// destroyStatus should only be set while also holding the raftMu and
+		// readOnlyCmdMu.
 		destroyStatus
 		// Is the range quiescent? Quiescent ranges are not Tick()'d and unquiesce
 		// whenever a Raft operation is performed.
@@ -758,7 +758,14 @@ func (r *Replica) descRLocked() *roachpb.RangeDescriptor {
 // lock exists in helpers_test.go. Move here if needed.
 func (r *Replica) closedTimestampPolicyRLocked() roachpb.RangeClosedTimestampPolicy {
 	if r.mu.zone.GlobalReads != nil && *r.mu.zone.GlobalReads {
-		return roachpb.LEAD_FOR_GLOBAL_READS
+		if !r.mu.state.Desc.ContainsKey(roachpb.RKey(keys.NodeLivenessPrefix)) {
+			return roachpb.LEAD_FOR_GLOBAL_READS
+		}
+		// The node liveness range ignores zone configs and always uses a
+		// LAG_BY_CLUSTER_SETTING closed timestamp policy. If it was to begin
+		// closing timestamps in the future, it would break liveness updates,
+		// which perform a 1PC transaction with a commit trigger and can not
+		// tolerate being pushed into the future.
 	}
 	return roachpb.LAG_BY_CLUSTER_SETTING
 }
@@ -1025,14 +1032,26 @@ func (r *Replica) GetMVCCStats() enginepb.MVCCStats {
 	return *r.mu.state.Stats
 }
 
-// GetSplitQPS returns the Replica's queries/s request rate.
+// GetMaxSplitQPS returns the Replica's maximum queries/s request rate over a
+// configured measurement period. If the Replica has not been recording QPS for
+// at least an entire measurement period, the method will return false.
 //
 // NOTE: This should only be used for load based splitting, only
 // works when the load based splitting cluster setting is enabled.
 //
 // Use QueriesPerSecond() for current QPS stats for all other purposes.
-func (r *Replica) GetSplitQPS() float64 {
-	return r.loadBasedSplitter.LastQPS(timeutil.Now())
+func (r *Replica) GetMaxSplitQPS() (float64, bool) {
+	return r.loadBasedSplitter.MaxQPS(r.Clock().PhysicalTime())
+}
+
+// GetLastSplitQPS returns the Replica's most recent queries/s request rate.
+//
+// NOTE: This should only be used for load based splitting, only
+// works when the load based splitting cluster setting is enabled.
+//
+// Use QueriesPerSecond() for current QPS stats for all other purposes.
+func (r *Replica) GetLastSplitQPS() float64 {
+	return r.loadBasedSplitter.LastQPS(r.Clock().PhysicalTime())
 }
 
 // ContainsKey returns whether this range contains the specified key.
@@ -1704,6 +1723,7 @@ func (r *Replica) maybeWatchForMergeLocked(ctx context.Context) (bool, error) {
 			}
 		}
 		r.raftMu.Lock()
+		r.readOnlyCmdMu.Lock()
 		r.mu.Lock()
 		if mergeCommitted && r.mu.destroyStatus.IsAlive() {
 			// The merge committed but the left-hand replica on this store hasn't
@@ -1718,6 +1738,7 @@ func (r *Replica) maybeWatchForMergeLocked(ctx context.Context) (bool, error) {
 		r.mu.mergeTxnID = uuid.UUID{}
 		close(mergeCompleteCh)
 		r.mu.Unlock()
+		r.readOnlyCmdMu.Unlock()
 		r.raftMu.Unlock()
 	})
 	if errors.Is(err, stop.ErrUnavailable) {

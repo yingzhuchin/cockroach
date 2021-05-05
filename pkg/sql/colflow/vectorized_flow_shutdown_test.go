@@ -182,7 +182,7 @@ func TestVectorizedFlowShutdown(t *testing.T) {
 				}
 				createMetadataSourceForID := func(id int) colexecop.MetadataSource {
 					return colexectestutils.CallbackMetadataSource{
-						DrainMetaCb: func(ctx context.Context) []execinfrapb.ProducerMetadata {
+						DrainMetaCb: func() []execinfrapb.ProducerMetadata {
 							return []execinfrapb.ProducerMetadata{{Err: errors.Errorf("%d", id)}}
 						},
 					}
@@ -280,7 +280,7 @@ func TestVectorizedFlowShutdown(t *testing.T) {
 					doneFn := func() { close(serverStreamNotification.Donec) }
 					wg.Add(1)
 					go func(id int, stream execinfrapb.DistSQL_FlowStreamServer, doneFn func()) {
-						handleStreamErrCh[id] <- inbox.RunWithStream(stream.Context(), stream)
+						handleStreamErrCh[id] <- inbox.RunWithStream(stream.Context(), stream, make(<-chan struct{}))
 						doneFn()
 						wg.Done()
 					}(id, serverStream, doneFn)
