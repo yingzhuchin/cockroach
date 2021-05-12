@@ -5,17 +5,17 @@ name: Create doc issues on PR merge
 # least one valid release note in PR commits.
 
 on:
-  pull_request:
+  pull_request_target:
     branches:
       - master
       - 'release-*'
 
-#    types: [closed]
+    types: [closed]
 
 jobs:
   create-doc-issue:
     runs-on: ubuntu-20.04
-#    if: ${{ github.event.pull_request.merged == true }}
+    if: ${{ github.event.pull_request.merged == true }}
     env:
       PR_TITLE: ${{ github.event.pull_request.title }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -60,7 +60,7 @@ jobs:
                 body="${body//$'\n'/' '}"
                 body="${body//$'\r'/' '}"
                 body="${body//$'\\'/'%5C'}"
-                curl -X POST -H 'Authorization: token ${{ secrets.PAT }}' \
+                curl -X POST -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' \
                   -d '{"title": "${{ env.PR_TITLE }}", "labels": ["C-release-note"], "body": "'"$body"'"}' \
                   https://api.github.com/repos/yzdocs/docs/issues
               fi
