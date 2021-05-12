@@ -10,22 +10,16 @@ on:
       - master
       - 'release-*'
 
-    types: [closed]
+#    types: [closed]
 
 jobs:
   create-doc-issue:
     runs-on: ubuntu-20.04
-    if: ${{ github.event.pull_request.merged == true }}
+#    if: ${{ github.event.pull_request.merged == true }}
     env:
       PR_TITLE: ${{ github.event.pull_request.title }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
-      - name: Get PR commits
-        id: 'get-pr-commits'
-        uses: tim-actions/get-pr-commits@55b867b9b28954e6f5c1a0fe2f729dc926c306d0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       # Iterate through all commit messages on this PR.
       # For each commit message, check whether it contains at least one release note.
       # Extract the type(s) of release note(s) and check whether there exists
@@ -38,6 +32,7 @@ jobs:
           COMMITS: ${{ steps.get-pr-commits.outputs.commits }}
         with:
           command: |
+            echo $(jq .pull_request "$GITHUB_EVENT_PATH")
             COMMITS="${COMMITS//$'\''/'%27'}"
             echo $COMMITS > commits.json 
             LEN=$( jq length commits.json )
