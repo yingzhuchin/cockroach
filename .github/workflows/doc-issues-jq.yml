@@ -5,26 +5,28 @@ name: Create doc issues on PR merge
 # least one valid release note in PR commits.
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - master
       - 'release-*'
 
-    types: [closed]
+#    types: [closed]
 
 jobs:
   create-doc-issue:
     runs-on: ubuntu-20.04
-    if: ${{ github.event.pull_request.merged == true }}
+#    if: ${{ github.event.pull_request.merged == true }}
     env:
       PR_TITLE: ${{ github.event.pull_request.title }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Get PR commits
         id: 'get-pr-commits'
-        uses: tim-actions/get-pr-commits@55b867b9b28954e6f5c1a0fe2f729dc926c306d0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' \
+            'https://api.github.com/repos/yzdocs/cockroach/pulls/${{ env.PR_NUMBER }}/commits' > payload.json
+          commits=$(cat payload.json)
+          echo ::set-output name=commits::$commits
 
       # Iterate through all commit messages on this PR.
       # For each commit message, check whether it contains at least one release note.
@@ -58,7 +60,7 @@ jobs:
                 body="${body//$'\n'/' '}"
                 body="${body//$'\r'/' '}"
                 body="${body//$'\\'/'%5C'}"
-                curl -X POST -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' \
+                curl -X POST -H 'Authorization: token ${{ secrets.PAT }}' \
                   -d '{"title": "${{ env.PR_TITLE }}", "labels": ["C-release-note"], "body": "'"$body"'"}' \
                   https://api.github.com/repos/yzdocs/docs/issues
               fi
